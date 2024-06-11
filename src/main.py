@@ -44,7 +44,7 @@ def detect_edges_and_contours(image_cv, resize_width=360, resize_height=480):
 
     return image_with_contours, resized_img, resized_edges, closed, filtered_contours
 
-@app.post("/show-image")
+@app.get("/show-image")
 async def show_image(data: ImageData):
     try:
         # Decode the base64 string
