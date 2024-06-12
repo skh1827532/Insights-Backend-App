@@ -7,6 +7,21 @@ import numpy as np
 import cv2
 from rembg import remove, new_session
 
+import os
+import requests
+
+model_path = '/root/.u2net/u2net.onnx'
+model_url = 'https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2net.onnx'
+
+if not os.path.exists(model_path):
+    os.makedirs(os.path.dirname(model_path), exist_ok=True)
+    response = requests.get(model_url)
+    with open(model_path, 'wb') as file:
+        file.write(response.content)
+
+# Continue with the rest of your script
+
+
 app = FastAPI()
 
 class ImageData(BaseModel):
