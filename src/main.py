@@ -21,7 +21,7 @@ if not os.path.exists(model_path):
 
 # Continue with the rest of your script
 
-
+#This is fast api code here
 app = FastAPI()
 
 class ImageData(BaseModel):
