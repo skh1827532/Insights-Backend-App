@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import base64
 from PIL import Image
@@ -6,12 +7,18 @@ import io
 import numpy as np
 import cv2
 from rembg import remove, new_session
+import ezdxf
 
 
 app = FastAPI()
 
 class ImageData(BaseModel):
     file: str
+
+
+class DxfData(BaseModel):
+    file: str
+    scaling_factor: float
 
 def detect_edges_and_contours(image_cv, resize_width=360, resize_height=480):
     # Convert to grayscale
@@ -44,6 +51,20 @@ def detect_edges_and_contours(image_cv, resize_width=360, resize_height=480):
     cv2.drawContours(image_with_contours, filtered_contours, -1, (0, 255, 0), 2)
 
     return image_with_contours, resized_img, resized_edges, closed, filtered_contours
+
+def export_contours_to_dxf(contours, output_dxf_path, scaling_factor):
+    doc = ezdxf.new(dxfversion='R2010')
+    msp = doc.modelspace()
+
+    for contour in contours:
+        points = (contour[:, 0, :] * scaling_factor).tolist()
+        msp.add_lwpolyline(points, close=True)
+
+    doc.saveas(output_dxf_path)
+    print(f"Contours exported to {output_dxf_path}")
+
+
+
 
 @app.post("/show-image")
 async def show_image(data: ImageData):
@@ -94,6 +115,55 @@ async def show_image(data: ImageData):
 @app.get("/hello")
 async def hello():
     return {"message": "Hello, world!"}
+
+
+@app.post("/process-image")
+async def show_image(data: DxfData):
+    print(data)
+    try:
+        # Decode the base64 string
+        image_data = data.file.split(",")[1]
+        image_bytes = base64.b64decode(image_data)
+        image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+
+        # Initialize the rembg session with the specified model
+        model_name = "u2net"
+        rembg_session = new_session(model_name)
+
+        # Remove the background
+        image_without_bg = remove(image, session=rembg_session)
+
+        # Convert the output image to RGBA mode
+        image_without_bg = image_without_bg.convert("RGBA")
+
+        # Create a white background image with the same size as the output image
+        white_background = Image.new('RGBA', image_without_bg.size, (255, 255, 255, 255))
+
+        # Paste the output image onto the white background using its alpha channel as a mask
+        white_background.paste(image_without_bg, (0, 0), image_without_bg)
+
+        # Convert the image to OpenCV format
+        image_cv = cv2.cvtColor(np.array(white_background), cv2.COLOR_RGBA2BGRA)
+
+        # Detect contours
+        image_with_contours, resized_img, resized_edges, closed, filtered_contours = detect_edges_and_contours(image_cv)
+
+        # Convert the contour points to a list of lists of tuples
+        output_dxf_path = 'contours.dxf'
+        # scaling_factor = ((0.0762 * 3) / 480)
+        scaling_factor = data.scaling_factor
+        if filtered_contours:
+            export_contours_to_dxf(filtered_contours, output_dxf_path, scaling_factor)
+            print(f"Contours exported to {output_dxf_path}")
+        else:
+            print("No contours detected.")
+            
+        return FileResponse(output_dxf_path, filename='contours.dxf', media_type='application/dxf')
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 
 if __name__ == "__main__":
     import uvicorn
